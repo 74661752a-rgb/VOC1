@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VOC 대시보드</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@600&display=swap">
+<style>
+/* Layout: 위쪽 탭(입력 / 보고서). 입력은 가운데 한 줄 폼, 보고서는 요약 → 분류별 막대 → 일별 추이 → 내역 표 순서. */
+:root {
+  --bg: #f1f4f5;
+  --surface: #ffffff;
+  --ink: #182125;
+  --muted: #5a6a71;
+  --line: #d6dfe2;
+  --accent: #0e6b79;
+  --accent-ink: #ffffff;
+  --bad: #b3372f;
+  --font-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-num: "Noto Serif KR", "Batang", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11181b; --surface: #192124; --ink: #e6eef0; --muted: #98a9b0; --line: #2b383d;
+    --accent: #52b8c7; --accent-ink: #0b1c20; --bad: #f08278;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11181b; --surface: #192124; --ink: #e6eef0; --muted: #98a9b0; --line: #2b383d;
+  --accent: #52b8c7; --accent-ink: #0b1c20; --bad: #f08278;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.55; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1120px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { margin: 0; font-family: var(--font-num); font-weight: 600; font-size: 1.7rem; line-height: 1.25; text-wrap: balance; }
+.sub { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.tabs button { border: 0; border-radius: 0; padding: 9px 20px; background: transparent; }
+.tabs button + button { border-left: 1px solid var(--line); }
+.tabs button[aria-selected=true] { background: var(--accent); color: var(--accent-ink); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; min-width: 0; }
+.panel h2 { margin: 0 0 2px; font-size: 1.05rem; font-weight: 600; }
+.hint { margin: 0 0 14px; color: var(--muted); font-size: 0.85rem; }
+.formwrap { max-width: 580px; width: 100%; margin-inline: auto; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.field label { font-weight: 600; font-size: 0.9rem; display: flex; align-items: baseline; gap: 6px; }
+.field label small { font-weight: 400; color: var(--muted); font-size: 0.75rem; }
+.glabel { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+input[type=text], input[type=tel], input[type=datetime-local], input[type=date], input[type=search], input[type=number], input[type=password], select, textarea { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+textarea { resize: vertical; min-height: 4.2rem; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .row2 { grid-template-columns: 1fr; } }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+button { font: inherit; font-weight: 500; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.link { border: 0; background: none; padding: 4px 6px; color: var(--muted); font-size: 0.85rem; }
+button.link:hover { color: var(--ink); text-decoration: underline; }
+button.link.danger.armed { color: var(--bad); font-weight: 600; }
+.msg { min-height: 1.3em; margin: 10px 0 0; font-size: 0.85rem; color: var(--muted); }
+.msg.err { color: var(--bad); }
+.banner { background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; font-size: 0.85rem; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+
+/* 보고서 */
+.report { display: flex; flex-direction: column; gap: 20px; }
+.summary { margin: 6px 0 12px; max-width: 70ch; }
+.range { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border-radius: 999px; padding: 4px 12px; font-size: 0.85rem; }
+.chip[aria-pressed=true] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.range .dates { display: flex; align-items: center; gap: 6px; }
+.range .dates input { width: auto; padding: 5px 8px; font-size: 14px; }
+.range .push { margin-left: auto; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.tile .k { color: var(--muted); font-size: 0.8rem; }
+.tile .n { font-family: var(--font-num); font-size: 1.9rem; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tile .n.txt { font-size: 1.35rem; }
+.tile .s { color: var(--muted); font-size: 0.8rem; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: 12px; }
+.bars { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
+.brow { display: grid; grid-template-columns: minmax(5.5rem, 9rem) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 0.9rem; }
+.brow .lb { overflow-wrap: anywhere; }
+.brow .track { height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; }
+.brow .fill { height: 100%; background: var(--accent); border-radius: 5px; }
+.brow .val { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+.trend { position: relative; min-height: 200px; margin-top: 8px; }
+.trend svg { display: block; width: 100%; height: auto; overflow: visible; }
+.trend text { font-family: var(--font-ui); font-size: 11px; fill: var(--muted); }
+.trend .bar { fill: var(--accent); }
+.trend .bar.dim { opacity: 0.55; }
+.trend .gl { stroke: var(--line); stroke-width: 1; }
+.tip { position: absolute; z-index: 2; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); padding: 4px 9px; font-size: 12px; line-height: 1.5; white-space: nowrap; }
+.tabletop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; }
+.tabletop .grow { flex: 1 1 12rem; min-width: 0; }
+.tw { overflow: auto; max-height: 38rem; border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; min-width: 1000px; border-collapse: collapse; font-size: 0.9rem; }
+th { position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 600; font-size: 0.8rem; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.when { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+td.txt { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 11rem; max-width: 20rem; }
+td .sm { color: var(--muted); font-size: 0.8rem; display: block; }
+td.acts { white-space: nowrap; }
+.doc { width: 100%; min-height: 20rem; font: inherit; font-size: 15px; line-height: 1.7; white-space: pre-wrap; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; resize: vertical; }
+:root { --ok: #2f8a5b; --info: #3b7bc4; --warn: #c8503f; --warn-bg: #fbe7e3; --ok-bg: #dff1e7; --idle: #dbe3e6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ok: #6cc092; --info: #6ea8e6; --warn: #f09386; --warn-bg: #3a211e; --ok-bg: #1d3328; --idle: #2b383d; } }
+:root[data-theme="dark"] { --ok: #6cc092; --info: #6ea8e6; --warn: #f09386; --warn-bg: #3a211e; --ok-bg: #1d3328; --idle: #2b383d; }
+.prog .pk { color: var(--muted); font-weight: 600; font-size: 0.9rem; }
+.prow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 6px 0 12px; }
+.pbig { display: flex; align-items: baseline; gap: 8px; }
+.pbig span:first-child { font-family: var(--font-num); font-size: 3rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.pof { color: var(--muted); font-size: 1.1rem; }
+.pill { border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 0.95rem; background: var(--warn-bg); color: var(--warn); }
+.pill.good { background: var(--ok-bg); color: var(--ok); }
+.segs { display: flex; gap: 4px; }
+.seg { flex: 1 1 0; min-width: 3px; height: 26px; border-radius: 5px; background: var(--idle); }
+.seg.ok { background: var(--ok); }
+.seg.info { background: var(--info); }
+.seg.warn { background: var(--warn); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 0.85rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.next { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); overflow-wrap: anywhere; }
+.next b { color: var(--ink); }
+.gobtn { margin-top: 12px; }
+.sheets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: 14px; align-items: start; }
+.sheet { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px 12px; min-width: 0; }
+.sh-h { padding-bottom: 12px; border-bottom: 2px solid var(--ink); margin-bottom: 14px; }
+.sh-t { font-family: var(--font-num); font-weight: 600; font-size: 1.1rem; }
+.sh-m { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+.sh-s { margin-bottom: 14px; }
+.sh-k { margin: 0 0 3px; font-size: 0.95rem; font-weight: 600; color: var(--accent); }
+.sh-v { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sh-v.none { color: var(--muted); }
+.sh-by { margin: 18px 0 0; text-align: right; font-weight: 600; }
+.sh-a { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sh-n { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+.field label.chk { display: flex; align-items: center; gap: 10px; font-weight: 400; font-size: 0.95rem; padding: 5px 0; cursor: pointer; }
+.chk input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+[hidden] { display: none !important; }
+.when3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wgrp { display: flex; align-items: center; gap: 6px; }
+.when3 input[type=date] { flex: 1 1 auto; min-width: 0; }
+.when3 select { width: auto; flex: none; }
+.empty { text-align: center; color: var(--muted); padding: 28px 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.gate { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: grid; place-items: center; padding: 16px; }
+.gatebox { width: min(100%, 360px); }
+.subf { margin: 2px 0 10px 12px; padding-left: 14px; border-left: 3px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="gate" id="gate" hidden>
+  <form class="panel gatebox" id="gate-form">
+    <h2>VOC 대시보드</h2>
+    <p class="hint">관리자에게 받은 접속 비밀번호를 입력해 주세요.</p>
+    <div class="field"><label for="gate-pw">비밀번호</label><input type="password" id="gate-pw" autocomplete="current-password"></div>
+    <div class="btns"><button type="submit" class="primary">들어가기</button></div>
+    <p class="msg" id="gate-msg" role="status" aria-live="polite"></p>
+  </form>
+</div>
+
+<div class="wrap">
+  <header class="head">
+    <div>
+      <h1>VOC 대시보드</h1>
+      <p class="sub">고객의 소리(VOC)를 6하원칙으로 입력하고, 보고서에서 모아 봅니다.</p>
+      <button type="button" class="primary gobtn" id="goreport">보고서 보기</button>
+    </div>
+    <div class="tabs" role="tablist" aria-label="화면 선택">
+      <button type="button" role="tab" id="tab-input" aria-selected="true" aria-controls="view-input">입력</button>
+      <button type="button" role="tab" id="tab-report" aria-selected="false" aria-controls="view-report">보고서</button>
+    </div>
+    <button type="button" class="link" id="lock" hidden>잠금</button>
+  </header>
+
+  <section id="view-input" role="tabpanel" aria-labelledby="tab-input">
+    <form class="panel formwrap" id="form" novalidate>
+      <h2 id="form-title">새 VOC 입력</h2>
+      <p class="hint">모르는 칸은 비워 두어도 됩니다. ‘언제’, ‘어디서(건물·상세 장소)’, ‘접수경로’, ‘무엇을’은 꼭 적어 주세요.</p>
+      <div class="banner" id="edit-banner" hidden><span>접수한 내용을 수정하는 중입니다.</span><button type="button" class="link" id="cancel-edit">수정 취소</button></div>
+
+      <div class="field"><label for="f-kind">구분 <small>보고서 제목에 표시됩니다</small></label><select id="f-kind"><option value="voc">VOC 등록</option><option value="handover">주요인계 등록</option></select></div>
+      <div class="field"><label for="f-when-d">언제 <small>일어난 날짜와 시각 (24시간)</small></label><div class="when3"><div class="wgrp"><select id="f-when-y" aria-label="년"></select><select id="f-when-mo" aria-label="월"></select><select id="f-when-d" aria-label="일"></select></div><div class="wgrp"><select id="f-when-h" aria-label="시"></select><span>:</span><select id="f-when-m" aria-label="분"></select></div></div><input type="hidden" id="f-when"></div>
+      <div class="row2">
+        <div class="field"><label for="f-building">어디서 <small>건물·구역</small></label><select id="f-building"><option value="">선택</option><option value="new">신관</option><option value="main">본관</option><option value="out">외부</option></select></div>
+        <div class="field"><label for="f-place">상세 장소</label><select id="f-place"><option value="">선택</option><option value="객실">1. 객실</option><option value="레저">2. 레저</option><option value="공용환경">3. 공용환경</option></select></div>
+        <div class="field" id="room-field" hidden><label for="f-room">객실 번호</label><input type="text" id="f-room" maxlength="20" inputmode="numeric" placeholder="객실 번호를 입력" autocomplete="off"></div>
+        <div class="field" id="grade-field" hidden><label for="f-grade">등급 <small>고객 등급</small></label><select id="f-grade"><option value="">선택</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="V1">V1</option><option value="V2">V2</option><option value="V3">V3</option></select></div>
+        <div class="field" id="gender-field" hidden><label for="f-gender">성별</label><select id="f-gender"><option value="">선택</option><option value="남">남</option><option value="여">여</option></select></div>
+        <div class="field" id="age-field" hidden><label for="f-age">연령 <small>연령대</small></label><select id="f-age"><option value="">선택</option><option value="10대 이하">10대 이하</option><option value="20대">20대</option><option value="30대">30대</option><option value="40대">40대</option><option value="50대">50대</option><option value="60대">60대</option><option value="70대 이상">70대 이상</option></select></div>
+        <div class="field" id="visit-field" hidden><label for="f-visit">방문횟수 <small>이번이 몇 번째 방문인지</small></label><input type="number" id="f-visit" min="1" max="99" inputmode="numeric" placeholder="예: 1 (첫 방문)"></div>
+        <div class="field" id="member-field" hidden><label for="f-member">구성원 <small>함께 투숙한 분들</small></label><input type="text" id="f-member" list="member-list" maxlength="50" autocomplete="off" placeholder="예: 커플, 가족(아이 동반)"><datalist id="member-list"><option value="혼자"><option value="커플"><option value="부부"><option value="가족"><option value="친구"><option value="단체"></datalist></div>
+        <div class="field" id="fam-field" style="grid-column: 1 / -1" hidden><label for="f-fam">가족 구성 <small>동반한 가족</small></label><select id="f-fam"><option value="">선택</option><option value="parents">1. 부모동반</option><option value="kids">2. 자녀동반</option><option value="both">3. 부모 및 자녀동반</option></select></div>
+        <div id="kids-field" style="grid-column: 1 / -1" role="group" aria-labelledby="kids-h" hidden>
+          <div class="glabel" id="kids-h">자녀 <small style="font-weight:400;color:var(--muted)">가족 동반 시 인원수와 나이</small></div>
+          <div class="row2"><div class="field"><label for="f-kids">1. 자녀 인원수</label><input type="number" id="f-kids" min="0" max="10" inputmode="numeric" placeholder="몇 명"></div></div>
+          <div class="row2" id="kid-ages"></div>
+        </div>
+        <div class="field" id="contact-field" style="grid-column: 1 / -1" hidden><label for="f-contact">연락처 <small>알면 적어 주세요</small></label><input type="tel" id="f-contact" maxlength="13" inputmode="tel" autocomplete="off" placeholder="숫자만 입력해도 됩니다"></div>
+        <div style="grid-column: 1 / -1" role="group" aria-labelledby="who-h">
+          <div class="glabel" id="who-h">누가</div>
+          <div class="row2">
+            <div class="field"><label for="f-gtype">고객 구분</label><select id="f-gtype"><option value="name">1. 고객성함</option><option value="unknown">2. 성명미상</option></select></div>
+            <div class="field"><label for="f-who">담당 직원</label><input type="text" id="f-who" maxlength="100" autocomplete="off"></div>
+          </div>
+          <div class="field" id="guest-field"><label for="f-guest">고객 성함</label><input type="text" id="f-guest" maxlength="50" autocomplete="off" placeholder="고객 성함을 입력"></div>
+        </div>
+      </div>
+      <div class="field"><label for="f-channel">접수경로</label><select id="f-channel"><option value="">선택</option><option value="PTIC">1. PTIC</option><option value="신관 프론트">2. 신관 프론트</option><option value="본관 프론트">3. 본관 프론트</option></select></div>
+      <div class="field"><label for="f-what">무엇을 <small>일어난 일, 요청·불만</small></label><textarea id="f-what" maxlength="2000" rows="3" placeholder="무슨 일이 있었는지 적어 주세요" required></textarea></div>
+      <div class="field"><label for="f-how">어떻게 <small>응대·처리 방법</small></label><textarea id="f-how" maxlength="2000" rows="3" placeholder="어떻게 응대하고 처리했는지 적어 주세요"></textarea></div>
+      <div class="field"><label for="f-why">왜 <small>원인·이유</small></label><textarea id="f-why" maxlength="2000" rows="3" placeholder="왜 그런 일이 생겼는지 적어 주세요"></textarea></div>
+      <div class="field" role="group" aria-labelledby="st-h"><div class="glabel" id="st-h">처리 상태 <small style="font-weight:400;color:var(--muted)">해당하는 것을 모두 체크</small></div>
+        <label class="chk"><input type="checkbox" name="status" value="rc"> 1. R/C</label>
+<div class="row2 subf" id="rc-field" hidden>
+        <div class="field"><label for="f-rc-from">FROM <small>바꾸기 전 객실</small></label><input type="text" id="f-rc-from" maxlength="20" inputmode="numeric" autocomplete="off" placeholder="객실 번호"></div>
+        <div class="field"><label for="f-rc-to">TO <small>바꾼 후 객실</small></label><input type="text" id="f-rc-to" maxlength="20" inputmode="numeric" autocomplete="off" placeholder="객실 번호"></div>
+      </div>
+        <label class="chk"><input type="checkbox" name="status" value="lout"> 2. L/OUT</label>
+<div class="field subf" id="lout-field" hidden><label for="f-lout">연장 시간 <small>기준 퇴실 시간 11:00</small></label><select id="f-lout"><option value="">선택</option><option value="30">1. 11:30</option><option value="60">2. 12:00</option><option value="etc">3. 기타</option></select><input type="text" id="f-lout-etc" maxlength="50" placeholder="예: 13:00, 14:00까지" aria-label="기타 연장 시간" style="margin-top: 8px" hidden></div>
+        <label class="chk"><input type="checkbox" name="status" value="treat"> 3. TREAT 제공</label>
+<div class="field subf" id="treat-field" role="group" aria-labelledby="treat-h" hidden><div class="glabel" id="treat-h">TREAT 제공 품목 <small style="font-weight:400;color:var(--muted)">Free · 해당하는 것을 모두 체크</small></div>
+        <label class="chk"><input type="checkbox" name="treat" value="C1"> C1_초콜릿</label>
+        <label class="chk"><input type="checkbox" name="treat" value="SF1"> SF1_시그니처(과일_Normal)</label>
+        <label class="chk"><input type="checkbox" name="treat" value="WH"> WH_와인(Half)</label>
+        <label class="chk"><input type="checkbox" name="treat" value="F1"> F1_꽃-Small</label>
+        <label class="chk"><input type="checkbox" name="treat" value="F2"> F2_꽃 수반</label>
+        <label class="chk"><input type="checkbox" name="treat" value="L1"> L1_W.Letter</label>
+        <label class="chk"><input type="checkbox" name="treat" value="BD1"> BD1_Chocolate 베이커리</label>
+        <label class="chk"><input type="checkbox" name="treat" value="BD2"> BD2_Pastry</label>
+        <label class="chk"><input type="checkbox" name="treat" value="WF"> WF_와인 Normal</label>
+        <label class="chk"><input type="checkbox" name="treat" value="W1"> W1_와인 Special</label>
+        <label class="chk"><input type="checkbox" name="treat" value="K1"> K1_한과</label></div>
+        <label class="chk"><input type="checkbox" name="status" value="bf"> 4. 조식 제공</label>
+<div class="row2 subf" id="bf-field" hidden>
+        <div class="field"><label for="f-bf-count">1. 인원수</label><input type="number" id="f-bf-count" min="1" max="99" inputmode="numeric" placeholder="몇 명"></div>
+        <div class="field"><label for="f-bf">2. 장소</label><select id="f-bf"><option value="">선택</option><option value="otp">OTP</option><option value="lounge">P/라운지</option></select></div>
+      </div>
+        <label class="chk"><input type="checkbox" name="status" value="apology"> 5. 구두사과</label>
+        <label class="chk"><input type="checkbox" name="status" value="upgrade"> 6. 이후 방문시 Up-grade 제공약속</label>
+<div class="field subf" id="up-field" hidden>
+        <label for="f-up-text">약속 내용 <small>예: 객실 등급, 적용 시기</small></label>
+        <input type="text" id="f-up-text" maxlength="200" placeholder="약속한 내용을 적어 주세요">
+      </div>
+</div>
+      <div class="field" role="group" aria-labelledby="note-h"><div class="glabel" id="note-h">비고 <small style="font-weight:400;color:var(--muted)">해당하는 것을 모두 체크</small></div>
+        <label class="chk"><input type="checkbox" name="note" value="profile"> 1. 고객프로파일 업데이트 OK</label>
+        <label class="chk"><input type="checkbox" name="note" value="filter"> 2. 필터 제외처리함</label>
+        <label class="chk"><input type="checkbox" name="note" value="dns"> 3. 해당객실 DNS 처리</label>
+        <label class="chk"><input type="checkbox" name="note" value="hk"> 4. H/K 해당객실 확인요청함</label>
+        <label class="chk"><input type="checkbox" name="note" value="ap"> 5. AP 결제 후 전달예정</label>
+        <label class="chk"><input type="checkbox" name="note" value="etc"> 6. 기타</label>
+        <div id="f-note-etc" class="subf" role="group" aria-label="비고 기타 내용" hidden>
+          <input type="text" id="f-note-etc-1" maxlength="300" placeholder="1. 내용 입력" aria-label="기타 1" style="margin-bottom: 6px">
+          <input type="text" id="f-note-etc-2" maxlength="300" placeholder="2. 내용 입력" aria-label="기타 2" style="margin-bottom: 6px">
+          <input type="text" id="f-note-etc-3" maxlength="300" placeholder="3. 내용 입력" aria-label="기타 3">
+        </div></div>
+      <div class="btns"><button type="submit" class="primary" id="submit">접수하기</button><button type="button" id="reset">비우기</button></div>
+      <p class="msg" id="msg" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <section id="view-report" class="report" role="tabpanel" aria-labelledby="tab-report" hidden>
+    <div class="panel">
+      <h2>VOC 보고서</h2>
+      <p class="hint" id="count">불러오는 중…</p>
+      <div class="range">
+        <div class="chips" role="group" aria-label="기간 선택">
+          <button type="button" class="chip" data-r="all" aria-pressed="true">전체</button>
+          <button type="button" class="chip" data-r="today" aria-pressed="false">오늘</button>
+          <button type="button" class="chip" data-r="7" aria-pressed="false">최근 7일</button>
+          <button type="button" class="chip" data-r="30" aria-pressed="false">최근 30일</button>
+        </div>
+        <div class="dates"><input type="date" id="r-from" aria-label="시작일"><span>~</span><input type="date" id="r-to" aria-label="종료일"></div>
+        <div class="push tools"><button type="button" id="csv" hidden>엑셀용 CSV 저장</button><button type="button" id="bk-save">백업 저장(JSON)</button><button type="button" id="bk-load">백업 불러오기</button><input type="file" id="bk-file" accept="application/json,.json" hidden></div>
+      </div>
+      <div class="tabletop"><input type="search" class="grow" id="q" placeholder="내용·이름·객실 번호로 찾기" aria-label="보고서 검색"></div>
+    </div>
+    <div class="sheets" id="sheets"></div>
+  </section>
+</div>
+<script>
+// 구글 스프레드시트 서버를 쓰려면 아래 따옴표 안에 '웹 앱 주소'를 붙여 넣으세요.
+// 비워 두면 이 기기의 브라우저에만 저장됩니다.
+window.VOC_CONFIG = {
+  SCRIPT_URL: ''
+};
+</script>
+<script>
+(function () {
+  'use strict';
+  var BUILD = { 'new': '신관', main: '본관', out: '외부' };
+  var PLACES = ['객실', '레저', '공용환경'];
+  var NOTES = { profile: '고객프로파일 업데이트 OK', filter: '필터 제외처리함', dns: '해당객실 DNS 처리', hk: 'H/K 해당객실 확인요청함', ap: 'AP 결제 후 전달예정', etc: '기타' };
+  function arr(x) { return Array.isArray(x) ? x : []; }
+  function stSet(c) { return Array.isArray(c.statuses) ? c.statuses : (c.status ? [c.status] : []); }
+  function has(c, k) { return stSet(c).indexOf(k) !== -1; }
+  function stOn(k) { var i = document.querySelector('input[name=status][value=' + k + ']'); return !!(i && i.checked); }
+  function getStatuses() { return Array.prototype.filter.call(document.querySelectorAll('input[name=status]'), function (i) { return i.checked; }).map(function (i) { return i.value; }); }
+  function setStatuses(a) { document.querySelectorAll('input[name=status]').forEach(function (i) { i.checked = (a || []).indexOf(i.value) !== -1; }); }
+  function statusNames(c) { return stSet(c).map(function (k) { return STATUS[k]; }).filter(Boolean).join(', '); }
+  function statusSub(k, c) {
+    return k === 'rc' ? rcText(c) : k === 'lout' ? loutText(c) : k === 'treat' ? treatText(c) : k === 'bf' ? bfText(c) : k === 'upgrade' ? upText(c) : '';
+  }
+  function syncRc() {
+    var on = stOn('rc');
+    $('#rc-field').hidden = !on;
+    if (!on) { $('#f-rc-from').value = ''; $('#f-rc-to').value = ''; }
+  }
+  var TREATS = { C1: 'C1_초콜릿', SF1: 'SF1_시그니처(과일_Normal)', WH: 'WH_와인(Half)', F1: 'F1_꽃-Small', F2: 'F2_꽃 수반', L1: 'L1_W.Letter', BD1: 'BD1_Chocolate 베이커리', BD2: 'BD2_Pastry', WF: 'WF_와인 Normal', W1: 'W1_와인 Special', K1: 'K1_한과' };
+  function getTreats() { return Array.prototype.filter.call(document.querySelectorAll('input[name=treat]'), function (i) { return i.checked; }).map(function (i) { return i.value; }); }
+  function setTreats(a) { document.querySelectorAll('input[name=treat]').forEach(function (i) { i.checked = (a || []).indexOf(i.value) !== -1; }); }
+  function syncTreat() {
+    var on = stOn('treat');
+    $('#treat-field').hidden = !on;
+    if (!on) setTreats([]);
+  }
+  function treatList(c) {
+    if (!has(c, 'treat')) return '';
+    return Object.keys(TREATS).filter(function (k) { return arr(c.treats).indexOf(k) !== -1; }).map(function (k) { return TREATS[k]; }).join(', ');
+  }
+  function treatText(c) { var t = treatList(c); return t ? ' (' + t + ')' : ''; }
+  function syncBf() {
+    var on = stOn('bf');
+    $('#bf-field').hidden = !on;
+    if (!on) { $('#f-bf').value = ''; $('#f-bf-count').value = ''; }
+  }
+  function bfLabel(c) { return has(c, 'bf') && c.bf ? (c.bf === 'otp' ? 'OTP' : 'P/라운지') : ''; }
+  function bfText(c) {
+    if (!has(c, 'bf')) return '';
+    var p = [], b = bfLabel(c);
+    if (c.bfCount) p.push('인원 ' + c.bfCount + '명');
+    if (b) p.push('장소 ' + b);
+    return p.length ? ' (' + p.join(', ') + ')' : '';
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function optList(sel, from, to, suffix) {
+    sel.textContent = '';
+    for (var i = from; i <= to; i++) { var o = document.createElement('option'); o.value = pad2(i); o.textContent = pad2(i) + (suffix || ''); sel.appendChild(o); }
+  }
+  function fillDays() {
+    var d = $('#f-when-d'), cur = d.value;
+    var n = new Date(Number($('#f-when-y').value), Number($('#f-when-mo').value), 0).getDate() || 31;
+    optList(d, 1, n, '일');
+    d.value = cur && Number(cur) <= n ? cur : pad2(n);
+  }
+  function fillWhen() {
+    var y = $('#f-when-y'), yr = new Date().getFullYear();
+    y.textContent = '';
+    for (var i = yr - 3; i <= yr + 1; i++) { var o = document.createElement('option'); o.value = o.textContent = String(i); y.appendChild(o); }
+    optList($('#f-when-mo'), 1, 12, '월');
+    optList($('#f-when-h'), 0, 23, '시');
+    optList($('#f-when-m'), 0, 59, '분');
+    $('#f-when-mo').value = '01';
+    fillDays();
+  }
+  function syncWhen() {
+    $('#f-when').value = $('#f-when-y').value + '-' + $('#f-when-mo').value + '-' + $('#f-when-d').value + 'T' + $('#f-when-h').value + ':' + $('#f-when-m').value;
+  }
+  function setWhen(v) {
+    if (!$('#f-when-h').options.length) fillWhen();
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v || '') || /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(nowLocal());
+    var y = $('#f-when-y');
+    if (!Array.prototype.some.call(y.options, function (o) { return o.value === m[1]; })) {
+      var o = document.createElement('option'); o.value = o.textContent = m[1]; y.appendChild(o);
+      Array.prototype.slice.call(y.options).sort(function (a, b) { return a.value - b.value; }).forEach(function (x) { y.appendChild(x); });
+    }
+    y.value = m[1];
+    $('#f-when-mo').value = m[2];
+    fillDays();
+    $('#f-when-d').value = m[3];
+    $('#f-when-h').value = m[4];
+    $('#f-when-m').value = m[5];
+    syncWhen();
+  }
+  function syncGuest() {
+    var un = $('#f-gtype').value === 'unknown';
+    $('#guest-field').hidden = un;
+    if (un) $('#f-guest').value = '';
+  }
+  var KINDS = { voc: 'VOC', handover: '주요인계' };
+  function kindName(c) { return KINDS[c.kind] || 'VOC'; }
+  function getEtcs() { return [1, 2, 3].map(function (n) { return $('#f-note-etc-' + n).value.trim(); }); }
+  function setEtcs(a) { [1, 2, 3].forEach(function (n) { $('#f-note-etc-' + n).value = (a && a[n - 1]) || ''; }); }
+  function etcLines(c) {
+    var list = Array.isArray(c.noteEtcs) ? c.noteEtcs : (c.noteEtc ? [c.noteEtc] : []);
+    return list.map(function (t, i) { return t ? '\n    ' + (i + 1) + ') ' + t : ''; }).join('');
+  }
+  function syncNoteEtc() {
+    var on = document.querySelector('input[name=note][value=etc]').checked;
+    $('#f-note-etc').hidden = !on;
+    if (!on) setEtcs([]);
+  }
+  function getKids() { return Array.prototype.map.call(document.querySelectorAll('#kid-ages input'), function (i) { return i.value.trim(); }); }
+  function buildKids(n, ages) {
+    var host = $('#kid-ages'); host.textContent = '';
+    for (var i = 0; i < n; i++) {
+      var f = el('div', 'field');
+      var lb = el('label', null, '2-' + (i + 1) + '. 자녀 ' + (i + 1) + ' 나이(세)'); lb.setAttribute('for', 'f-kid-' + i);
+      var inp = document.createElement('input'); inp.type = 'number'; inp.id = 'f-kid-' + i; inp.min = '0'; inp.max = '30'; inp.setAttribute('inputmode', 'numeric'); inp.placeholder = '예: 7';
+      inp.value = (ages && ages[i]) || '';
+      f.appendChild(lb); f.appendChild(inp); host.appendChild(f);
+    }
+  }
+  function setKids(a) { a = a || []; $('#f-kids').value = a.length ? a.length : ''; buildKids(a.length, a); }
+  function syncKids() {
+    var fam = /가족/.test($('#f-member').value);
+    $('#fam-field').hidden = !fam;
+    if (!fam) $('#f-fam').value = '';
+    var on = fam && ($('#f-fam').value === 'kids' || $('#f-fam').value === 'both');
+    $('#kids-field').hidden = !on;
+    if (!on) { $('#f-kids').value = ''; $('#kid-ages').textContent = ''; }
+  }
+  var FAMS = { parents: '부모동반', kids: '자녀동반', both: '부모 및 자녀동반' };
+  function famLabel(c) { return FAMS[c.fam] || ''; }
+  function famText(c) { return c.fam ? ' ' + famLabel(c) : ''; }
+  function kidsText(c) {
+    var a = arr(c.kidAges);
+    return a.length ? ' (자녀 ' + a.length + '명: ' + a.map(function (x) { return x ? x + '세' : '나이 미상'; }).join(', ') + ')' : '';
+  }
+  function syncUp() {
+    var on = stOn('upgrade');
+    $('#up-field').hidden = !on;
+    if (!on) $('#f-up-text').value = '';
+  }
+  function upLabel(c) {
+    if (!has(c, 'upgrade')) return '';
+    return c.upText || '';
+  }
+  function upText(c) { var u = upLabel(c); return u ? ' (내용: ' + u + ')' : ''; }
+  function syncLout() {
+    var on = stOn('lout');
+    $('#lout-field').hidden = !on;
+    if (!on) $('#f-lout').value = '';
+    var etc = on && $('#f-lout').value === 'etc';
+    $('#f-lout-etc').hidden = !etc;
+    if (!etc) $('#f-lout-etc').value = '';
+  }
+  function loutLabel(c) {
+    if (!has(c, 'lout') || !c.lout) return '';
+    return c.lout === '30' ? '11:30' : (c.lout === '60' ? '12:00' : (c.loutEtc || '기타'));
+  }
+  function loutText(c) { var l = loutLabel(c); return l ? ' (기준 11:00 → ' + l + ')' : ''; }
+  function rcText(c) { return has(c, 'rc') && (c.rcFrom || c.rcTo) ? ' (FROM ' + (c.rcFrom || '-') + ' ~ TO ' + (c.rcTo || '-') + ')' : ''; }
+  function setNotes(a) { document.querySelectorAll('input[name=note]').forEach(function (i) { i.checked = (a || []).indexOf(i.value) !== -1; }); }
+  function getNotes() { return Array.prototype.filter.call(document.querySelectorAll('input[name=note]'), function (i) { return i.checked; }).map(function (i) { return i.value; }); }
+  function noteText(c) {
+    var keys = Object.keys(NOTES), have = arr(c.notes);
+    return keys.filter(function (k) { return have.indexOf(k) !== -1; }).map(function (k) { return (keys.indexOf(k) + 1) + '. ' + NOTES[k] + (k === 'etc' ? etcLines(c) : ''); }).join('\n');
+  }
+  var CHANNELS = ['PTIC', '신관 프론트', '본관 프론트'];
+  var STATUS = { rc: 'R/C', lout: 'L/OUT', treat: 'TREAT 제공', bf: '조식 제공', apology: '구두사과', upgrade: '이후 방문시 Up-grade 제공약속' };
+  var $ = function (s) { return document.querySelector(s); };
+  var state = { cases: [], ready: false, editing: null, canWrite: true, busy: false, view: 'input', preset: 'all', from: '', to: '', q: '' };
+  var db = null, downloads = null, armed = null, armTimer = null;
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function dayKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parseDay(s) { return new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10))); }
+  function nowLocal() { var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+  function fmtWhen(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s || '');
+    if (!m) return s || '시각 미정';
+    var yr = Number(m[1]) === new Date().getFullYear() ? '' : m[1] + '.';
+    return yr + Number(m[2]) + '/' + Number(m[3]) + ' ' + m[4] + ':' + m[5];
+  }
+  function statusLabel(c) { return statusNames(c) || '미지정'; }
+  function say(text, isErr) { var m = $('#msg'); m.textContent = text || ''; m.className = 'msg' + (isErr ? ' err' : ''); }
+  function errText(e) {
+    var c = e && e.code;
+    if (c === 'quota_exceeded') return '저장 공간이 가득 찼습니다. 오래된 접수를 지운 뒤 다시 시도해 주세요.';
+    if (c === 'auth') return '비밀번호가 맞지 않거나 만료되었습니다. ‘잠금’을 눌러 다시 로그인해 주세요.';
+    if (c === 'network') return '서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.';
+    if (c === 'invalid_argument') return '이 화면에서는 내용을 저장할 권한이 없습니다. 보기만 가능합니다.';
+    return '저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+  }
+  function setWritable(on, why) {
+    state.canWrite = on;
+    $('#form').querySelectorAll('input, textarea, select, button').forEach(function (n) { n.disabled = !on; });
+    if (!on && why) say(why, false);
+  }
+
+  /* ---------- 입력 ---------- */
+  function fmtPhone(raw) {
+    var d = raw.replace(/\D/g, '').slice(0, 11);
+    if (d.slice(0, 2) === '02') d = d.slice(0, 10);
+    if (d.charAt(0) === '1') {
+      d = d.slice(0, 8);
+      return d.length <= 4 ? d : d.slice(0, 4) + '-' + d.slice(4);
+    }
+    if (d.length < 3) return d;
+    var n = d.slice(0, 2) === '02' ? 2 : 3;
+    var a = d.slice(0, n), r = d.slice(n);
+    if (!r) return a;
+    if (r.length <= 3) return a + '-' + r;
+    if (r.length <= 7) return a + '-' + r.slice(0, 3) + '-' + r.slice(3);
+    return a + '-' + r.slice(0, 4) + '-' + r.slice(4);
+  }
+
+  function syncRoom() {
+    var on = $('#f-place').value === '객실';
+    $('#room-field').hidden = !on;
+    $('#contact-field').hidden = !on;
+    $('#grade-field').hidden = !on;
+    $('#gender-field').hidden = !on;
+    $('#age-field').hidden = !on;
+    $('#visit-field').hidden = !on;
+    $('#member-field').hidden = !on;
+    if (!on) { $('#f-room').value = ''; $('#f-contact').value = ''; $('#f-grade').value = ''; $('#f-gender').value = ''; $('#f-age').value = ''; $('#f-visit').value = ''; $('#f-member').value = ''; }
+    syncKids();
+  }
+
+  function resetForm() {
+    state.editing = null;
+    setWhen(nowLocal());
+    $('#f-kind').value = 'voc';
+    ['#f-place', '#f-guest', '#f-who', '#f-channel', '#f-what', '#f-how', '#f-why', '#f-building', '#f-room', '#f-grade', '#f-gender', '#f-age', '#f-visit', '#f-member', '#f-contact'].forEach(function (s) { $(s).value = ''; });
+    syncRoom();
+    $('#f-gtype').value = 'name';
+    syncGuest();
+    setNotes([]);
+    setStatuses([]);
+    syncNoteEtc();
+    syncRc();
+    syncLout();
+    syncTreat();
+    syncBf();
+    syncUp();
+    $('#edit-banner').hidden = true;
+    $('#form-title').textContent = '새 VOC 입력';
+    $('#submit').textContent = '접수하기';
+  }
+
+  function startEdit(c) {
+    setView('input');
+    state.editing = c.id;
+    setWhen(c.when || nowLocal());
+    $('#f-kind').value = c.kind || 'voc';
+    $('#f-building').value = c.building || '';
+    $('#f-place').value = c.place || '';
+    $('#f-room').value = c.room || '';
+    $('#f-gender').value = c.gender || '';
+    $('#f-age').value = c.age || '';
+    $('#f-contact').value = c.contact || '';
+    syncRoom();
+    $('#f-room').value = c.room || '';
+    $('#f-gender').value = c.gender || '';
+    $('#f-age').value = c.age || '';
+    $('#f-contact').value = c.contact || '';
+    $('#f-grade').value = c.grade || '';
+    $('#f-visit').value = c.visit || '';
+    $('#f-member').value = c.member || '';
+    $('#f-fam').value = c.fam || (arr(c.kidAges).length ? 'kids' : '');
+    syncKids();
+    setKids(arr(c.kidAges));
+    $('#f-gtype').value = c.guestType === 'unknown' ? 'unknown' : 'name';
+    $('#f-guest').value = c.guest || '';
+    syncGuest();
+    $('#f-who').value = c.who || '';
+    $('#f-channel').value = c.channel || '';
+    $('#f-what').value = c.what || '';
+    $('#f-how').value = c.how || '';
+    $('#f-why').value = c.why || '';
+    setStatuses(stSet(c));
+    setNotes(arr(c.notes));
+    setEtcs(Array.isArray(c.noteEtcs) ? c.noteEtcs : (c.noteEtc ? [c.noteEtc] : []));
+    syncNoteEtc();
+    syncRc();
+    $('#f-rc-from').value = c.rcFrom || '';
+    $('#f-rc-to').value = c.rcTo || '';
+    $('#f-lout').value = c.lout || '';
+    $('#f-lout-etc').value = c.loutEtc || '';
+    syncLout();
+    setTreats(arr(c.treats));
+    syncTreat();
+    $('#f-bf').value = c.bf || '';
+    $('#f-bf-count').value = c.bfCount || '';
+    $('#f-up-text').value = c.upText || '';
+    syncUp();
+    syncBf();
+    $('#edit-banner').hidden = false;
+    $('#form-title').textContent = 'VOC 수정';
+    $('#submit').textContent = '수정 저장';
+    say('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function readForm() {
+    var isRoom = $('#f-place').value === '객실';
+    return {
+      kind: $('#f-kind').value,
+      when: $('#f-when').value,
+      building: $('#f-building').value,
+      place: $('#f-place').value,
+      room: isRoom ? $('#f-room').value.trim() : '',
+      grade: isRoom ? $('#f-grade').value : '',
+      gender: isRoom ? $('#f-gender').value : '',
+      age: isRoom ? $('#f-age').value : '',
+      visit: isRoom ? $('#f-visit').value.trim() : '',
+      member: isRoom ? $('#f-member').value.trim() : '',
+      fam: $('#fam-field').hidden ? '' : $('#f-fam').value,
+      kidAges: !$('#kids-field').hidden ? getKids() : [],
+      contact: isRoom ? $('#f-contact').value.trim() : '',
+      guestType: $('#f-gtype').value,
+      guest: $('#f-gtype').value === 'unknown' ? '' : $('#f-guest').value.trim(),
+      who: $('#f-who').value.trim(),
+      channel: $('#f-channel').value,
+      what: $('#f-what').value.trim(),
+      how: $('#f-how').value.trim(),
+      why: $('#f-why').value.trim(),
+      statuses: getStatuses(),
+      status: getStatuses()[0] || '',
+      notes: getNotes(),
+      noteEtcs: getNotes().indexOf('etc') !== -1 ? getEtcs() : [],
+      rcFrom: stOn('rc') ? $('#f-rc-from').value.trim() : '',
+      rcTo: stOn('rc') ? $('#f-rc-to').value.trim() : '',
+      lout: stOn('lout') ? $('#f-lout').value : '',
+      loutEtc: stOn('lout') && $('#f-lout').value === 'etc' ? $('#f-lout-etc').value.trim() : '',
+      treats: stOn('treat') ? getTreats() : [],
+      bf: stOn('bf') ? $('#f-bf').value : '',
+      bfCount: stOn('bf') ? $('#f-bf-count').value.trim() : '',
+      upText: stOn('upgrade') ? $('#f-up-text').value.trim() : ''
+    };
+  }
+
+  async function submit(ev) {
+    ev.preventDefault();
+    if (!db || state.busy || !state.canWrite) return;
+    var d = readForm();
+    if (!d.when) { say('‘언제’를 입력해 주세요.', true); $('#f-when-d').focus(); return; }
+    if (!d.building) { say('‘어디서’에서 신관, 본관, 외부 중 하나를 선택해 주세요.', true); $('#f-building').focus(); return; }
+    if (!d.place) { say('‘상세 장소’에서 객실, 레저, 공용환경 중 하나를 선택해 주세요.', true); $('#f-place').focus(); return; }
+    if (d.place === '객실' && !d.room) { say('객실 번호를 입력해 주세요.', true); $('#f-room').focus(); return; }
+    if (!d.channel) { say('‘접수경로’를 선택해 주세요.', true); $('#f-channel').focus(); return; }
+    if (!d.what) { say('‘무엇을’ 칸에 내용을 적어 주세요.', true); $('#f-what').focus(); return; }
+    state.busy = true; $('#submit').disabled = true; say('저장하는 중…');
+    try {
+      var iso = new Date().toISOString();
+      if (state.editing) {
+        d.updatedAt = iso;
+        await db.doc('cases/' + state.editing).update(d);
+        resetForm(); say('수정했습니다.');
+      } else {
+        d.createdAt = iso;
+        await db.collection('cases').add(d);
+        resetForm(); say('접수했습니다.');
+      }
+    } catch (e) { say(errText(e), true); }
+    state.busy = false; $('#submit').disabled = !state.canWrite;
+  }
+
+  async function removeCase(c) {
+    if (!db || !state.canWrite) return;
+    try { await db.doc('cases/' + c.id).delete(); if (state.editing === c.id) resetForm(); }
+    catch (e) { say(errText(e), true); }
+  }
+
+  /* ---------- 보고서 ---------- */
+  function bounds() {
+    var today = new Date();
+    if (state.preset === 'all') return ['', ''];
+    if (state.preset === 'today') return [dayKey(today), dayKey(today)];
+    if (state.preset === '7' || state.preset === '30') {
+      var s = new Date(); s.setDate(s.getDate() - (Number(state.preset) - 1));
+      return [dayKey(s), dayKey(today)];
+    }
+    return [state.from, state.to];
+  }
+  function inRange() {
+    var b = bounds();
+    return state.cases.filter(function (c) {
+      var k = (c.when || '').slice(0, 10);
+      if (b[0] && k < b[0]) return false;
+      if (b[1] && k > b[1]) return false;
+      return true;
+    });
+  }
+  function tableRows(rows) {
+    var q = state.q.trim().toLowerCase();
+    var list = rows.slice().sort(function (a, b) { return String(b.when || '').localeCompare(String(a.when || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
+    if (!q) return list;
+    return list.filter(function (c) {
+      return [BUILD[c.building], c.place, c.room, c.guest, c.who, c.contact, c.channel, c.what, c.how, c.why, statusLabel(c)].join(' ').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  var DAY = ['일', '월', '화', '수', '목', '금', '토'];
+  function parts(c) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(c.when || '');
+    var when = '';
+    if (m) { var dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); when = Number(m[2]) + '/' + Number(m[3]) + '(' + DAY[dt.getDay()] + ') ' + m[4] + ':' + m[5] + '경'; }
+    var loc = [BUILD[c.building], c.place === '객실' && c.room ? '#' + c.room : c.place].filter(Boolean).join(' ');
+    var cust = [c.grade ? c.grade + '등급' : '', c.age, c.gender ? '(' + c.gender + ')' : '', c.guestType === 'unknown' ? '성명미상' : c.guest, c.visit ? (c.visit === '1' ? '첫 방문' : c.visit + '번째 방문') : '', c.member ? c.member + famText(c) + kidsText(c) : '', c.contact].filter(Boolean).join(' ');
+    var happen = [when, loc].filter(Boolean).join(', ') + (c.channel ? ' (' + c.channel + ' 접수)' : '') + (c.what ? '\n' + c.what : '');
+    var sts = stSet(c).filter(function (k) { return STATUS[k]; }).map(function (k) { return '※ 처리 상태: ' + STATUS[k] + statusSub(k, c); });
+    var done = [c.how].concat(sts).filter(Boolean).join('\n');
+    return [['고객 사항', cust], ['발생경위', happen.trim()], ['사실확인', c.why || ''], ['처리결과', done], ['비고', noteText(c)]];
+  }
+  function buildDoc(c) {
+    return parts(c).map(function (p) { return '<' + p[0] + '>\n' + p[1]; }).join('\n\n') + '\n\n-보고자: ' + (c.who || '');
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
+    var t = document.createElement('textarea');
+    t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+    document.body.removeChild(t);
+    return ok;
+  }
+
+  function sheet(c) {
+    var a = el('article', 'sheet');
+    var h = el('header', 'sh-h');
+    h.appendChild(el('div', 'sh-t', kindName(c) + ' 추가내용 & 추가처리내용'));
+    h.appendChild(el('div', 'sh-m', '추가등록구분: ' + kindName(c) + ' 등록 · ' + fmtWhen(c.when)));
+    a.appendChild(h);
+    parts(c).forEach(function (p) {
+      var sec = el('section', 'sh-s');
+      sec.appendChild(el('h3', 'sh-k', '<' + p[0] + '>'));
+      sec.appendChild(el('p', 'sh-v' + (p[1] ? '' : ' none'), p[1] || '-'));
+      a.appendChild(sec);
+    });
+    a.appendChild(el('p', 'sh-by', '-보고자: ' + (c.who || '')));
+    var bar = el('div', 'sh-a');
+    var cp = el('button', null, '복사하기'); cp.type = 'button';
+    var note = el('span', 'sh-n'); note.setAttribute('role', 'status');
+    cp.addEventListener('click', async function () {
+      var ok = await copyText(buildDoc(c));
+      note.textContent = ok ? '복사했습니다.' : '복사하지 못했습니다.';
+      setTimeout(function () { note.textContent = ''; }, 2500);
+    });
+    bar.appendChild(cp);
+    if (state.canWrite) {
+      var ed = el('button', 'link', '수정'); ed.type = 'button';
+      ed.addEventListener('click', function () { startEdit(c); });
+      var del = el('button', 'link danger', armed === c.id ? '정말 삭제' : '삭제'); del.type = 'button';
+      if (armed === c.id) del.classList.add('armed');
+      del.addEventListener('click', function () {
+        if (armed === c.id) { armed = null; clearTimeout(armTimer); removeCase(c); return; }
+        armed = c.id; clearTimeout(armTimer);
+        armTimer = setTimeout(function () { armed = null; renderReport(); }, 4000);
+        renderReport();
+      });
+      bar.appendChild(ed); bar.appendChild(del);
+    }
+    bar.appendChild(note);
+    a.appendChild(bar);
+    return a;
+  }
+
+  function renderReport() {
+    if (state.view !== 'report') return;
+    var rows = inRange(), list = tableRows(rows);
+    $('#count').textContent = !state.ready ? '불러오는 중…' : '선택한 기간 접수 ' + rows.length + '건' + (state.q.trim() ? ' · 검색 결과 ' + list.length + '건' : '');
+    var host = $('#sheets'); host.textContent = '';
+    if (!list.length) host.appendChild(el('div', 'empty', state.cases.length ? '조건에 맞는 접수가 없습니다.' : '아직 접수된 VOC가 없습니다. ‘입력’ 탭에서 첫 접수를 넣어 주세요.'));
+    list.forEach(function (c) {
+      try { host.appendChild(sheet(c)); }
+      catch (e) { host.appendChild(el('div', 'empty', '이 접수를 화면에 표시하지 못했습니다. (' + (c && c.id || '') + ') 백업 저장으로 내용을 보관한 뒤 수정해 주세요.')); }
+    });
+    $('#csv').hidden = !(downloads && list.length);
+  }
+
+  function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+  async function exportCsv() {
+    var rows = tableRows(inRange());
+    if (!downloads || !rows.length) return;
+    var head = ['구분', '언제', '건물', '상세 장소', '객실 번호', '고객 성함', '등급', '성별', '연령', '방문횟수', '구성원', '가족 구성', '자녀 인원', '자녀 나이', '연락처', '담당 직원', '접수경로', '무엇을', '어떻게', '왜', '처리 상태', 'R/C FROM', 'R/C TO', 'L/OUT 연장', 'TREAT 품목', '조식 인원', '조식 장소', 'Up-grade 약속 내용', '비고'];
+    var lines = [head.map(csvCell).join(',')];
+    rows.forEach(function (c) {
+      lines.push([kindName(c), fmtWhen(c.when), BUILD[c.building] || '', c.place, c.room || '', (c.guestType === 'unknown' ? '성명미상' : c.guest) || '', c.grade || '', c.gender || '', c.age || '', c.visit || '', c.member || '', famLabel(c), arr(c.kidAges).length || '', arr(c.kidAges).map(function (x) { return x ? x + '세' : ''; }).join(' / '), c.contact || '', c.who || '', c.channel || '', c.what, c.how, c.why, statusNames(c), c.rcFrom || '', c.rcTo || '', loutLabel(c), treatList(c), has(c, 'bf') ? c.bfCount || '' : '', bfLabel(c), upLabel(c), noteText(c).replace(/\n/g, ' / ')].map(csvCell).join(','));
+    });
+    try { await downloads.save({ filename: 'VOC-보고서.csv', data: '﻿' + lines.join('\r\n') }); }
+    catch (e) { if (!e || e.code !== 'declined') alert_(); }
+  }
+  function alert_() { var b = $('#csv'); b.textContent = '저장하지 못했습니다'; setTimeout(function () { b.textContent = '엑셀용 CSV 저장'; }, 2500); }
+
+  /* ---------- 화면 전환과 이벤트 ---------- */
+  function setView(v) {
+    state.view = v;
+    $('#view-input').hidden = v !== 'input';
+    $('#view-report').hidden = v !== 'report';
+    $('#tab-input').setAttribute('aria-selected', String(v === 'input'));
+    $('#tab-report').setAttribute('aria-selected', String(v === 'report'));
+    if (v === 'report') renderReport();
+  }
+
+  $('#tab-input').addEventListener('click', function () { setView('input'); });
+  $('#goreport').addEventListener('click', function () { setView('report'); window.scrollTo({ top: 0 }); });
+  $('#tab-report').addEventListener('click', function () { setView('report'); });
+  $('#form').addEventListener('submit', submit);
+  $('#reset').addEventListener('click', function () { resetForm(); say(''); });
+  $('#cancel-edit').addEventListener('click', function () { resetForm(); say(''); });
+  $('#f-place').addEventListener('change', syncRoom);
+  ['#f-when-y', '#f-when-mo'].forEach(function (s) { $(s).addEventListener('change', function () { fillDays(); syncWhen(); }); });
+  ['#f-when-d', '#f-when-h', '#f-when-m'].forEach(function (s) { $(s).addEventListener('change', syncWhen); });
+  document.querySelectorAll('input[name=status]').forEach(function (i) { i.addEventListener('change', function () { syncRc(); syncLout(); syncTreat(); syncBf(); syncUp(); }); });
+  $('#f-lout').addEventListener('change', syncLout);
+  document.querySelector('input[name=note][value=etc]').addEventListener('change', syncNoteEtc);
+  $('#f-member').addEventListener('input', syncKids);
+  $('#f-fam').addEventListener('change', syncKids);
+  $('#f-gtype').addEventListener('change', syncGuest);
+  $('#f-kids').addEventListener('input', function () {
+    var n = Math.max(0, Math.min(10, parseInt($('#f-kids').value, 10) || 0));
+    buildKids(n, getKids());
+  });
+  $('#f-contact').addEventListener('input', function (e) {
+    var node = e.target;
+    var before = node.value.slice(0, node.selectionStart || 0).replace(/\D/g, '').length;
+    var out = fmtPhone(node.value);
+    if (out === node.value) return;
+    node.value = out;
+    var p = 0, k = 0;
+    while (p < out.length && k < before) { if (/\d/.test(out.charAt(p))) k++; p++; }
+    try { node.setSelectionRange(p, p); } catch (err) { /* ignore */ }
+  });
+  document.querySelectorAll('.chip[data-r]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.preset = b.dataset.r; state.from = ''; state.to = '';
+      $('#r-from').value = ''; $('#r-to').value = '';
+      document.querySelectorAll('.chip[data-r]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      renderReport();
+    });
+  });
+  function dateChanged() {
+    state.from = $('#r-from').value; state.to = $('#r-to').value;
+    state.preset = (state.from || state.to) ? 'custom' : 'all';
+    document.querySelectorAll('.chip[data-r]').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.r === state.preset)); });
+    renderReport();
+  }
+  $('#r-from').addEventListener('change', dateChanged);
+  $('#r-to').addEventListener('change', dateChanged);
+  $('#q').addEventListener('input', function (e) { state.q = e.target.value; renderReport(); });
+  $('#csv').addEventListener('click', exportCsv);
+  var rz = null;
+  window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(renderReport, 150); });
+
+  resetForm();
+  if (location.hash === '#report') setView('report');
+
+  /* ---------- 웹 저장소: 이 브라우저의 localStorage ---------- */
+  var KEY = 'voc-cases-v1';
+  var PW_KEY = 'voc-pass-v1';
+  var CFG = window.VOC_CONFIG || {};
+  var REMOTE = !!CFG.SCRIPT_URL;
+  var remoteItems = [];
+  var subs = [];
+  function loadAll() {
+    try { var a = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveAll(arr) {
+    try { localStorage.setItem(KEY, JSON.stringify(arr)); }
+    catch (e) { var err = new Error('save failed'); err.code = 'quota_exceeded'; throw err; }
+    notify();
+  }
+  function snapshot() {
+    return { docs: (REMOTE ? remoteItems : loadAll()).map(function (c) { return { id: c.id, data: function () { var o = Object.assign({}, c); delete o.id; return o; } }; }) };
+  }
+  function notify() { var snap = snapshot(); subs.forEach(function (cb) { cb(snap); }); }
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function makeDb() {
+    return {
+      collection: function () {
+        return {
+          add: async function (d) { var a = loadAll(); var id = newId(); a.push(Object.assign({ id: id }, d)); saveAll(a); return { id: id }; },
+          onSnapshot: function (cb) { subs.push(cb); cb(snapshot()); }
+        };
+      },
+      doc: function (path) {
+        var id = path.split('/')[1];
+        return {
+          update: async function (d) { var a = loadAll().map(function (c) { return c.id === id ? Object.assign({}, c, d, { id: id }) : c; }); saveAll(a); },
+          delete: async function () { saveAll(loadAll().filter(function (c) { return c.id !== id; })); }
+        };
+      }
+    };
+  }
+  function getPw() { try { return localStorage.getItem(PW_KEY) || ''; } catch (e) { return ''; } }
+  async function api(action, payload) {
+    var res, j;
+    try {
+      res = await fetch(CFG.SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action, password: getPw() }, payload || {}))
+      });
+      j = await res.json();
+    } catch (e) { var ne = new Error('network'); ne.code = 'network'; throw ne; }
+    if (!j.ok) { var er = new Error(j.error || 'server'); er.code = j.error === 'auth' ? 'auth' : (j.error || 'server'); throw er; }
+    return j;
+  }
+  async function refresh() {
+    var j = await api('list');
+    remoteItems = j.items || [];
+    notify();
+  }
+  function makeRemoteDb() {
+    return {
+      collection: function () {
+        return {
+          add: async function (d) { var j = await api('add', { data: d }); await refresh(); return { id: j.id }; },
+          onSnapshot: function (cb) { subs.push(cb); cb(snapshot()); }
+        };
+      },
+      doc: function (path) {
+        var id = path.split('/')[1];
+        return {
+          update: async function (d) { await api('update', { id: id, data: d }); await refresh(); },
+          delete: async function () { await api('delete', { id: id }); await refresh(); }
+        };
+      }
+    };
+  }
+  function saveFile(filename, data, type) {
+    var blob = new Blob([data], { type: type });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    return Promise.resolve({ status: 'saved' });
+  }
+
+  /* 백업 저장 / 불러오기 */
+  $('#bk-save').addEventListener('click', function () {
+    var d = new Date();
+    var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+    saveFile('VOC-백업-' + stamp + '.json', JSON.stringify(REMOTE ? remoteItems : loadAll(), null, 2), 'application/json');
+  });
+  $('#bk-load').addEventListener('click', function () { $('#bk-file').click(); });
+  $('#bk-file').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var list = JSON.parse(String(r.result));
+        if (!Array.isArray(list)) throw new Error('bad');
+        if (REMOTE) { importRemote(list); return; }
+        var cur = loadAll(), ids = {};
+        cur.forEach(function (c) { ids[c.id] = true; });
+        var added = 0;
+        list.forEach(function (c) {
+          if (!c || typeof c !== 'object') return;
+          if (!c.id || ids[c.id]) c = Object.assign({}, c, { id: newId() });
+          if (ids[c.id]) return;
+          ids[c.id] = true; cur.push(c); added++;
+        });
+        saveAll(cur);
+        $('#count').textContent = '백업에서 ' + added + '건을 불러왔습니다.';
+      } catch (err) { $('#count').textContent = '백업 파일을 읽지 못했습니다. VOC 백업(JSON) 파일인지 확인해 주세요.'; }
+    };
+    r.readAsText(f);
+  });
+  async function importRemote(list) {
+    var n = 0;
+    $('#count').textContent = '백업을 올리는 중…';
+    try {
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if (!c || typeof c !== 'object') continue;
+        var d = Object.assign({}, c); delete d.id;
+        await api('add', { data: d }); n++;
+      }
+      await refresh();
+      $('#count').textContent = '백업에서 ' + n + '건을 불러왔습니다.';
+    } catch (e) { $('#count').textContent = errText(e); }
+  }
+  window.addEventListener('storage', function (e) { if (e.key === KEY) notify(); });
+
+  function setCases(snap) {
+    state.cases = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+    state.ready = true;
+    renderReport();
+  }
+  function showGate(msg) {
+    $('#gate').hidden = false;
+    $('#gate-msg').textContent = msg || '';
+    $('#gate-pw').value = '';
+    setTimeout(function () { $('#gate-pw').focus(); }, 50);
+  }
+  function hideGate() { $('#gate').hidden = true; }
+  async function connect() {
+    try { await refresh(); hideGate(); return true; }
+    catch (e) {
+      if (e.code === 'auth') { showGate(getPw() ? '비밀번호가 맞지 않습니다.' : ''); }
+      else { showGate('서버에 연결하지 못했습니다. 주소와 인터넷 연결을 확인해 주세요.'); }
+      return false;
+    }
+  }
+
+  function start() {
+    downloads = { save: function (o) { return saveFile(o.filename, o.data, 'text/csv;charset=utf-8'); } };
+    if (!REMOTE) {
+      db = makeDb();
+      db.collection('cases').onSnapshot(setCases);
+      return;
+    }
+    db = makeRemoteDb();
+    subs.push(setCases);
+    $('#lock').hidden = false;
+    $('#lock').addEventListener('click', function () {
+      try { localStorage.removeItem(PW_KEY); } catch (e) { /* ignore */ }
+      remoteItems = []; notify(); showGate('');
+    });
+    $('#gate-form').addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      var pw = $('#gate-pw').value;
+      if (!pw) return;
+      try { localStorage.setItem(PW_KEY, pw); } catch (e) { /* ignore */ }
+      $('#gate-msg').textContent = '확인하는 중…';
+      await connect();
+    });
+    if (getPw()) connect(); else { state.ready = true; renderReport(); showGate(''); }
+    setInterval(function () { if (!document.hidden && $('#gate').hidden) refresh().catch(function () {}); }, 20000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && $('#gate').hidden && getPw()) refresh().catch(function () {}); });
+  }
+  start();
+})();
+</script>
+</body>
+</html>
